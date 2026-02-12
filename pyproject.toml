@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "federated-survival-forest"
+version = "0.0.1"
+description = "Implementation of Federated Random Survival Forest for partially overlapping data"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Jonas Harriehausen", email = "jonas.harriehausen@uni-giessen.de" },
+]
+
+dependencies = [
+  "scikit-survival>=0.27.0",
+  "pandas>=2.3.0",
+  "numpy>=2.0.0",
+  "scikit-learn>=1.8.0",
+]
+
+[project.optional-dependencies]
+
+test = ["pytest>=9.0.0", "pytest-cov"]
+
+dev = ["pytest>=9.0.0", "pytest-cov", "jupyter"]
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/frsf"]
