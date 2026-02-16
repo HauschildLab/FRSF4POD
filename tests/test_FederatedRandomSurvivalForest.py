@@ -1,7 +1,10 @@
 # %%
-from frsf.models import LocalRandomSurvivalForest, FederatedRandomSurvivalForest
-from frsf.testing import create_dummy_data, federate_data
-from frsf.preprocessing import SchemaAligner
+from federated_rsf.models import (
+    LocalRandomSurvivalForest,
+    FederatedRandomSurvivalForest,
+)
+from federated_rsf.testing import create_dummy_data, federate_data
+from federated_rsf.preprocessing import SchemaAligner
 import pytest
 import numpy as np
 

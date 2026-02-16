@@ -1,6 +1,6 @@
 # %%
-from frsf.preprocessing import SchemaCreator, SchemaAligner
-from frsf.testing import create_dummy_data, federate_data
+from federated_rsf.preprocessing import SchemaCreator, SchemaAligner
+from federated_rsf.testing import create_dummy_data, federate_data
 import pytest
 
 

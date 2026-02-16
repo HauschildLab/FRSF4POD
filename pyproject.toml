@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "federated-survival-forest"
+name = "federated-rsf"
 version = "0.0.1"
-description = "Implementation of Federated Random Survival Forest for partially overlapping data"
+description = "Implementation of Federated Random Survival Forest for partially overlapping data."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -28,4 +28,4 @@ dev = ["pytest>=9.0.0", "pytest-cov", "jupyter"]
 
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/frsf"]
+packages = ["src/federated_rsf"]

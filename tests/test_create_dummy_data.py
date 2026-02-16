@@ -1,5 +1,5 @@
 # %%
-from frsf.testing import create_dummy_data
+from federated_rsf.testing import create_dummy_data
 import pytest
 import numpy as np
 

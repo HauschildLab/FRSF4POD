@@ -1,6 +1,6 @@
 # %%
-from frsf.models import LocalRandomSurvivalForest
-from frsf.testing import create_dummy_data
+from federated_rsf.models import LocalRandomSurvivalForest
+from federated_rsf.testing import create_dummy_data
 import numpy as np
 import pytest
 
