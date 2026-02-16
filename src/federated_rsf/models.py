@@ -5,6 +5,7 @@ from typing import Literal, Optional, Self
 from numpy.typing import ArrayLike
 import pandas as pd
 from .persistence import SaveLoadMixin
+from sksurv.functions import StepFunction
 
 
 class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
@@ -269,6 +270,38 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
 
         return self
 
+    def predict_survival_function_custom(self, X, return_array=False):
+        if self.tree_origin == "local":
+            unique_times = self.unique_times_
+        else:
+            unique_times = self.federated_unique_times
+
+        preds = []
+
+        for estimator in self.estimators_:
+            pred = estimator.predict_survival_function(X)
+            preds.append(pred)
+
+        stepfunctions = []
+        for i in range(len(X)):
+            Ys = []
+            for pred in preds:
+                X = pred[i].x
+                Y = pred[i].y
+                indexes = np.searchsorted(X, unique_times, side="right")
+                Y_extended = np.array([1] + list(Y) + [0])
+
+                Y_fed = Y_extended[indexes]
+                Ys.append(Y_fed)
+
+            y_hat = sum(Ys) / len(self.estimators_)
+
+            sf = StepFunction(x=unique_times, y=y_hat, a=preds[0][i].a, b=preds[0][i].b)
+
+            stepfunctions.append(sf)
+
+        return np.array(stepfunctions)
+
     def set_federated_estimators(self, estimators: list[SurvivalTree]) -> Self:
         """
         Sets the federated estimators to be used for updating the local model.
@@ -337,6 +370,13 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
                 p=np.array(weights) / sum(weights),
             )
 
+        federated_unique_times = set()
+        for estimator in self.estimators_:
+            federated_unique_times = federated_unique_times.union(
+                set(estimator.unique_times_)
+            )
+
+        self.federated_unique_times = np.sort(np.array(list(federated_unique_times)))
         self.n_estimators = len(self.estimators_)
         return self
 
