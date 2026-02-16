@@ -136,7 +136,7 @@ def federate_data(
         X_cur = X.iloc[start:end]
         cols_to_drop = X_cur.columns.to_series().sample(
             frac=drop_feature_percentage,
-            random_state=random_state,
+            random_state=rng,
         )
 
         X_cur = X_cur.drop(columns=cols_to_drop)
