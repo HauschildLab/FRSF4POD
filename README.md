@@ -75,6 +75,7 @@ This module can be used valiate the federated learning pipeline is case of missi
 ```python
 # Parameters
 n_samples = 500
+n_features = 10
 n_clients = 5
 random_state = 0
 
@@ -113,12 +114,35 @@ for X_local, column_map in zip(X_list, column_maps):
 
 ```
 
-The local models can then be trained on the local data
+The local models can then be trained on the processed local data.
+
+```python
+local_models = []
+
+for X_local, y_local in zip(X_list_aligned, y_list):
+    local_model = LocalRandomSurvivalForest(
+        random_state=random_state,
+    )
+    local_model = local_model.fit(X_local, y_local)
+    local_models.append(local_model)
+```
+
+The trained local models are then aggregated and the estimators are redistributed using the federated model.
+
+```python
+fed_model = FederatedRandomSurvivalForest(local_models=local_models)
+fed_model.distribute_trees()
+```
+
+Lastly you can compare the local and the federated model performance for example using the predict `predict_survival_function`
 
 
 ```python
+client_index = 0
 
+local_models[client_index].predict_survival_function(X_list_aligned[client_index])
+
+local_models[client_index].use_federated_estimators()
+
+local_models[client_index].predict_survival_function(X_list_aligned[client_index])
 ```
-
-
-
