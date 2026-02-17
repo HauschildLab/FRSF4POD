@@ -75,29 +75,20 @@ res3 = local_models[client_index].predict_survival_function_custom(
 )
 
 # %%
+from matplotlib import pyplot as plt
 
-preds = []
-
-for est in local_models[client_index].estimators_:
-    preds.append(est.predict_survival_function(X_list_aligned[0]))
-
-
-preds
-
-local_models[0].predict_survival_function
+for res in [res1, res2, res3]:
+    for i, s in enumerate(res[:5]):
+        plt.step(s.x, s.y, where="post", label=str(i))
+    plt.ylabel("Survival probability")
+    plt.xlabel("Time in days")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
 
 # %%
 
-import numpy as np
-
-xp = np.array([0, 1, 2, 4, 5])
-fp = np.array([10, 20, 30, 40, 50])
-
-x = np.array([-0.1, 0.5, 9999])
-
-idx = np.searchsorted(xp, x, side="right") - 1
-idx_clip = np.clip(idx, 0, len(fp) - 1)  # handle x < xp[0]
-
-y = fp[idx_clip]
-print(y)
+plt.plot(res1[0].x, res1[0].y)
+plt.plot(res3[0].x, res3[0].y)
+plt.show()
