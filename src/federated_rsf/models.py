@@ -1,3 +1,4 @@
+from joblib import Parallel, delayed
 from sksurv.ensemble import RandomSurvivalForest
 from sksurv.tree import SurvivalTree
 import numpy as np
@@ -273,35 +274,42 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
 
     def predict_cumulative_hazard_function(self, X, return_array=False):
         return self._predict_hazard_survival(
-            X, return_array=return_array, function="hazard"
+            X,
+            return_array=return_array,
+            predict_type="predict_cumulative_hazard_function",
         )
 
     def predict_survival_function(self, X, return_array=False):
         return self._predict_hazard_survival(
-            X, return_array=return_array, function="survival"
+            X, return_array=return_array, predict_type="predict_survival_function"
         )
 
     def _predict_hazard_survival(
-        self, X, return_array=False, function: Literal["hazard", "survival"] = "hazard"
+        self,
+        X,
+        return_array=False,
+        predict_type: Literal[
+            "predict_cumulative_hazard_function", "predict_survival_function"
+        ] = None,
     ):
         if self.tree_origin == "local":
             unique_times = self.unique_times_
         else:
             unique_times = self.federated_unique_times
 
-        if function == "hazard":
+        if predict_type == "predict_cumulative_hazard_function":
             left_y, right_y = 0, 1
-        elif function == "survival":
+        elif predict_type == "predict_survival_function":
             left_y, right_y = 1, 0
 
-        preds = []
-
-        for estimator in self.estimators_:
-            if function == "hazard":
-                pred = estimator.predict_cumulative_hazard_function(X)
-            elif function == "survival":
-                pred = estimator.predict_survival_function(X)
-            preds.append(pred)
+        preds = Parallel(
+            n_jobs=self.n_jobs,
+            verbose=self.verbose,
+            require="sharedmem",
+        )(
+            delayed(getattr(estimator, predict_type))(X)
+            for estimator in self.estimators_
+        )
 
         y_hats = []
 
