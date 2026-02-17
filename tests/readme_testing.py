@@ -58,11 +58,15 @@ fed_model.distribute_trees()
 
 client_index = 0
 
-res1 = local_models[client_index].predict_survival_function(
+res1 = local_models[client_index]._predict_survival_function_parent(
     X_list_aligned[client_index]
 )
 
-res2 = local_models[client_index].predict_survival_function_custom(
+res2 = local_models[client_index].predict_survival_function(
+    X_list_aligned[client_index]
+)
+
+has1 = local_models[client_index].predict_cumulative_hazard_function(
     X_list_aligned[client_index]
 )
 
@@ -70,10 +74,13 @@ res2 = local_models[client_index].predict_survival_function_custom(
 
 local_models[client_index].use_federated_estimators()
 
-res3 = local_models[client_index].predict_survival_function_custom(
-    X_list_aligned[client_index], return_array=True
+res3 = local_models[client_index].predict_survival_function(
+    X_list_aligned[client_index]
 )
 
+has2 = local_models[client_index].predict_cumulative_hazard_function(
+    X_list_aligned[client_index]
+)
 # %%
 from matplotlib import pyplot as plt
 
@@ -89,6 +96,13 @@ for res in [res1, res2, res3]:
 
 # %%
 
-plt.plot(res1[0].x, res1[0].y)
-plt.plot(res3[0].x, res3[0].y)
-plt.show()
+for res in [has1, has2]:
+    for i, s in enumerate(res[:5]):
+        plt.step(s.x, s.y, where="post", label=str(i))
+    plt.ylabel("Survival probability")
+    plt.xlabel("Time in days")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+# %%
