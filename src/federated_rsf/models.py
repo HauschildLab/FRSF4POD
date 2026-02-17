@@ -6,6 +6,7 @@ from numpy.typing import ArrayLike
 import pandas as pd
 from .persistence import SaveLoadMixin
 from sksurv.functions import StepFunction
+from sksurv.tree.tree import _array_to_step_function
 
 
 class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
@@ -270,37 +271,65 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
 
         return self
 
-    def predict_survival_function_custom(self, X, return_array=False):
+    def predict_cumulative_hazard_function(self, X, return_array=False):
+        return self._predict_hazard_survival(
+            X, return_array=return_array, function="hazard"
+        )
+
+    def predict_survival_function(self, X, return_array=False):
+        return self._predict_hazard_survival(
+            X, return_array=return_array, function="survival"
+        )
+
+    def _predict_hazard_survival(
+        self, X, return_array=False, function: Literal["hazard", "survival"] = "hazard"
+    ):
         if self.tree_origin == "local":
             unique_times = self.unique_times_
         else:
             unique_times = self.federated_unique_times
 
+        if function == "hazard":
+            left_y, right_y = 0, 1
+        elif function == "survival":
+            left_y, right_y = 1, 0
+
         preds = []
 
         for estimator in self.estimators_:
-            pred = estimator.predict_survival_function(X)
+            if function == "hazard":
+                pred = estimator.predict_cumulative_hazard_function(X)
+            elif function == "survival":
+                pred = estimator.predict_survival_function(X)
             preds.append(pred)
 
-        stepfunctions = []
+        y_hats = []
+
         for i in range(len(X)):
             Ys = []
             for pred in preds:
                 X = pred[i].x
                 Y = pred[i].y
                 indexes = np.searchsorted(X, unique_times, side="right")
-                Y_extended = np.array([1] + list(Y) + [0])
+                Y_extended = np.array([left_y] + list(Y) + [right_y])
 
                 Y_fed = Y_extended[indexes]
                 Ys.append(Y_fed)
 
             y_hat = sum(Ys) / len(self.estimators_)
 
-            sf = StepFunction(x=unique_times, y=y_hat, a=preds[0][i].a, b=preds[0][i].b)
+            y_hats.append(y_hat)
 
-            stepfunctions.append(sf)
+        if return_array:
+            return np.array(y_hats)
 
-        return np.array(stepfunctions)
+        return _array_to_step_function(unique_times, np.array(y_hats))
+
+    def _predict_cumulative_hazard_function_parent(self, X, return_array=False):
+        return super().predict_cumulative_hazard_function(X, return_array)
+
+    def _predict_survival_function_parent(self, X, return_array=False):
+        return super().predict_survival_function(X, return_array=return_array)
 
     def set_federated_estimators(self, estimators: list[SurvivalTree]) -> Self:
         """

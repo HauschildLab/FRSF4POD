@@ -108,4 +108,29 @@ def test_local_fed_switch(random_state):
     ), "local and federated predictions should differ"
 
 
+@pytest.mark.parametrize("random_state", [0, 1, 2, 3, 4, 5, 6, None])
+def test_hazard_survival_function(random_state):
+    n_samples, n_features = 128, 4
+
+    X, y = create_dummy_data(
+        n_samples,
+        n_features,
+        drop_feature_percentage=0.33,
+        random_state=random_state,
+    )
+
+    model = LocalRandomSurvivalForest(random_state=random_state)
+
+    model.fit(X, y)
+
+    hazard_our = model.predict_cumulative_hazard_function(X)
+    hazard_original = model._predict_cumulative_hazard_function_parent(X)
+
+    survival_our = model.predict_survival_function(X)
+    survival_original = model._predict_survival_function_parent(X)
+
+    assert np.all(hazard_our == hazard_original)
+    assert np.all(survival_our == survival_original)
+
+
 # %%
