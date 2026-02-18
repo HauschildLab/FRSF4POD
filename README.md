@@ -86,6 +86,7 @@ X, y = create_dummy_data(
     random_state=random_state,
 )
 
+# Split Dataset samples up to all clients
 X_list, y_list = federate_data(
     X,
     y,
@@ -97,27 +98,25 @@ X_list, y_list = federate_data(
 
 Next the columns of the local datasets are aligned to a global schema using the `SchemaCreator` and the local
 ```python
-# create global Schema
+# Create global Schema
+schema_creator = SchemaCreator(anonymize=False)
+local_columns = [DatasetSchema(X_local.columns) for X_local in X_list]
+dataset_schemas = schema_creator.fit_transform(local_columns)
 
-schema_creator = SchemaCreator(anonymize=True)
-local_columns = [X_local.columns for X_local in X_list]
-
-schema, column_maps = schema_creator.fit_transform(local_columns)
-
-# align local datasets
+# Align local datasets
 X_list_aligned = []
 
-for X_local, column_map in zip(X_list, column_maps):
+for X_local, schema in zip(X_list, dataset_schemas):
     schema_aligner = SchemaAligner()
-    X_aligned = schema_aligner.fit_transform(X_fed, schema, column_map=column_map)
+    X_aligned = schema_aligner.fit_transform(X_local, schema)
     X_list_aligned.append(X_aligned)
-
 ```
 
 The local models can then be trained on the processed local data.
 
 ```python
-local_models = []
+# Train local models
+local_models: list[LocalRandomSurvivalForest] = []
 
 for X_local, y_local in zip(X_list_aligned, y_list):
     local_model = LocalRandomSurvivalForest(
@@ -130,19 +129,54 @@ for X_local, y_local in zip(X_list_aligned, y_list):
 The trained local models are then aggregated and the estimators are redistributed using the federated model.
 
 ```python
+# Distribute trees between local models
 fed_model = FederatedRandomSurvivalForest(local_models=local_models)
 fed_model.distribute_trees()
 ```
 
-Lastly you can compare the local and the federated model performance for example using the predict `predict_survival_function`
+Lastly you can compare the local and the federated model performance for example using the predict `predict_survival_function` and `predict_cumulative_hazard_function`
 
 
 ```python
+# Example visualization of survival function and cumulative hazard function
 client_index = 0
+n_lines = 5
 
-local_models[client_index].predict_survival_function(X_list_aligned[client_index])
+survival_local = local_models[client_index].predict_survival_function(
+    X_list_aligned[client_index]
+)
+
+hazard_local = local_models[client_index].predict_cumulative_hazard_function(
+    X_list_aligned[client_index]
+)
 
 local_models[client_index].use_federated_estimators()
 
-local_models[client_index].predict_survival_function(X_list_aligned[client_index])
+survival_federated = local_models[client_index].predict_survival_function(
+    X_list_aligned[client_index]
+)
+
+hazard_federated = local_models[client_index].predict_cumulative_hazard_function(
+    X_list_aligned[client_index]
+)
+from matplotlib import pyplot as plt
+
+for surv in [survival_local, survival_federated]:
+    for i, s in enumerate(surv[:n_lines]):
+        plt.step(s.x, s.y, where="post", label=str(i))
+    plt.ylabel("Survival probability")
+    plt.xlabel("Time in days")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
+for hazard in [hazard_local, hazard_federated]:
+    for i, s in enumerate(hazard[:n_lines]):
+        plt.step(s.x, s.y, where="post", label=str(i))
+    plt.ylabel("Cumulative hazard")
+    plt.xlabel("Time in days")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 ```

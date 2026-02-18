@@ -20,6 +20,7 @@ X, y = create_dummy_data(
     random_state=random_state,
 )
 
+# Split Dataset samples up to all clients
 X_list, y_list = federate_data(
     X,
     y,
@@ -28,14 +29,12 @@ X_list, y_list = federate_data(
     random_state=random_state,
 )
 
-# create global Schema
-
+# Create global Schema
 schema_creator = SchemaCreator(anonymize=False)
 local_columns = [DatasetSchema(X_local.columns) for X_local in X_list]
-
 dataset_schemas = schema_creator.fit_transform(local_columns)
 
-# align local datasets
+# Align local datasets
 X_list_aligned = []
 
 for X_local, schema in zip(X_list, dataset_schemas):
@@ -43,7 +42,7 @@ for X_local, schema in zip(X_list, dataset_schemas):
     X_aligned = schema_aligner.fit_transform(X_local, schema)
     X_list_aligned.append(X_aligned)
 
-
+# Train local models
 local_models: list[LocalRandomSurvivalForest] = []
 
 for X_local, y_local in zip(X_list_aligned, y_list):
@@ -53,39 +52,36 @@ for X_local, y_local in zip(X_list_aligned, y_list):
     local_model = local_model.fit(X_local, y_local)
     local_models.append(local_model)
 
+# Distribute trees between local models
 fed_model = FederatedRandomSurvivalForest(local_models=local_models)
 fed_model.distribute_trees()
 
+
+# Example visualization of survival function and cumulative hazard function
 client_index = 0
+n_lines = 5
 
-res1 = local_models[client_index]._predict_survival_function_parent(
+survival_local = local_models[client_index].predict_survival_function(
     X_list_aligned[client_index]
 )
 
-res2 = local_models[client_index].predict_survival_function(
+hazard_local = local_models[client_index].predict_cumulative_hazard_function(
     X_list_aligned[client_index]
 )
-
-has1 = local_models[client_index].predict_cumulative_hazard_function(
-    X_list_aligned[client_index]
-)
-
-# %%
 
 local_models[client_index].use_federated_estimators()
 
-res3 = local_models[client_index].predict_survival_function(
+survival_federated = local_models[client_index].predict_survival_function(
     X_list_aligned[client_index]
 )
 
-has2 = local_models[client_index].predict_cumulative_hazard_function(
+hazard_federated = local_models[client_index].predict_cumulative_hazard_function(
     X_list_aligned[client_index]
 )
-# %%
 from matplotlib import pyplot as plt
 
-for res in [res1, res2, res3]:
-    for i, s in enumerate(res[:5]):
+for surv in [survival_local, survival_federated]:
+    for i, s in enumerate(surv[:n_lines]):
         plt.step(s.x, s.y, where="post", label=str(i))
     plt.ylabel("Survival probability")
     plt.xlabel("Time in days")
@@ -94,15 +90,11 @@ for res in [res1, res2, res3]:
     plt.show()
 
 
-# %%
-
-for res in [has1, has2]:
-    for i, s in enumerate(res[:5]):
+for hazard in [hazard_local, hazard_federated]:
+    for i, s in enumerate(hazard[:n_lines]):
         plt.step(s.x, s.y, where="post", label=str(i))
-    plt.ylabel("Survival probability")
+    plt.ylabel("Cumulative hazard")
     plt.xlabel("Time in days")
     plt.legend()
     plt.grid(True)
     plt.show()
-
-# %%
