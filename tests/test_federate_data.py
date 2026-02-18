@@ -138,6 +138,3 @@ def test_shuffle_sync():
 
     for X_fed, y_fed in zip(X_list, y_list):
         np.testing.assert_allclose(X_fed[0], y_fed["Survival_in_days"])
-
-
-# %%

@@ -77,6 +77,3 @@ def test_random_state(anonymize, random_state):
             assert schema1.column_map == schema2.column_map
         elif anonymize:
             assert schema1.column_map != schema2.column_map
-
-
-# %%

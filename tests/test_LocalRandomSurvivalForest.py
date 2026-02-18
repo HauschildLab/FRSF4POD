@@ -131,6 +131,3 @@ def test_hazard_survival_function(random_state):
 
     assert np.all(hazard_our == hazard_original)
     assert np.all(survival_our == survival_original)
-
-
-# %%

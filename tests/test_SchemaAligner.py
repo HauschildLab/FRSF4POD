@@ -69,6 +69,3 @@ def test_inverse_transform(random_state):
         X_undo_transform = schema_aligner.inverse_transform(X_aligned)
 
         assert (X_undo_transform.columns == X_fed.columns).all()
-
-
-# %%

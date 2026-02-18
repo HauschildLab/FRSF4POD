@@ -31,6 +31,3 @@ def test_random_state(random_state: int):
         assert not np.allclose(X, X_alt)
         assert not np.all(y["Status"] == y_alt["Status"])
         assert not np.allclose(y["Survival_in_days"], y_alt["Survival_in_days"])
-
-
-# %%
