@@ -8,6 +8,7 @@ from .persistence import SaveLoadMixin
 from typing import Self
 import dataclasses
 
+
 @dataclasses.dataclass
 class DatasetSchema(SaveLoadMixin):
     columns: list[str]
@@ -83,10 +84,10 @@ class SchemaAligner(BaseEstimator, TransformerMixin, SaveLoadMixin):
             The input DataFrame to be transformed.
 
         dataset_schema: DatasetSchema
-            A dataset schema containing:    
+            A dataset schema containing:
             - a list of column names representing the full schema to align to.
             - a dictionary of string -> string pairs, mapping the local column names to the corresponding column names in the full schema
-        
+
 
         Returns
         -------
@@ -96,6 +97,31 @@ class SchemaAligner(BaseEstimator, TransformerMixin, SaveLoadMixin):
 
         self.fit(dataset_schema)
         return self.transform(data)
+
+    def inverse_transform(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Transforms the input DataFrame back from the full schema to the local one.
+
+        Parameters
+        ----------
+        Data : pd.DataFrame
+            The input DataFrame to be transformed.
+
+        Returns
+        -------
+        pd.DataFrame
+            The transformed DataFrame with the local schema.
+        """
+        data = data.copy()
+        reverse_column_map = {value: key for key, value in self.column_map.items()}
+        local_columns = [
+            column
+            for column in data.columns
+            if column in list(reverse_column_map.keys())
+        ]
+        data = data[local_columns]
+        data = data.rename(columns=reverse_column_map)
+        return data
 
 
 class SchemaCreator(BaseEstimator, TransformerMixin, SaveLoadMixin):
@@ -187,7 +213,9 @@ class SchemaCreator(BaseEstimator, TransformerMixin, SaveLoadMixin):
         if self.anonymize:
             new_global_columns = [f"feature_{i}" for i in range(len(global_columns))]
             global_columns = (
-                np.random.RandomState(self.random_state).permutation(global_columns).tolist()
+                np.random.RandomState(self.random_state)
+                .permutation(global_columns)
+                .tolist()
             )
         else:
             new_global_columns = global_columns
@@ -203,7 +231,9 @@ class SchemaCreator(BaseEstimator, TransformerMixin, SaveLoadMixin):
 
                 updated_column_map[key] = self.schema_column_map[value]
 
-            updated_schemas.append(DatasetSchema(self.global_columns, updated_column_map))
+            updated_schemas.append(
+                DatasetSchema(self.global_columns, updated_column_map)
+            )
 
         return updated_schemas
 
@@ -250,6 +280,5 @@ class SchemaCreator(BaseEstimator, TransformerMixin, SaveLoadMixin):
 
         for key in keys_to_remove:
             del self.schema_column_map[key]
-
 
         return DatasetSchema(self.global_columns, updated_column_map)
