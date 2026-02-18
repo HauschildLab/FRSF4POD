@@ -3,7 +3,7 @@ from federated_rsf.models import (
     LocalRandomSurvivalForest,
 )
 from federated_rsf.testing import create_dummy_data, federate_data
-from federated_rsf.preprocessing import SchemaAligner, SchemaCreator
+from federated_rsf.schema import SchemaAligner, SchemaCreator, DatasetSchema
 import pytest
 import numpy as np
 
@@ -32,12 +32,12 @@ def test_end_to_end(n_samples_per_client, n_features, update_method, update_weig
         random_state=random_state,
     )
 
-    schema, column_maps = SchemaCreator(anonymize=True).fit_transform(
-        [X_fed.columns for X_fed in X_list]
+    dataset_schemas = SchemaCreator(anonymize=True).fit_transform(
+        [DatasetSchema(X_fed.columns) for X_fed in X_list]
     )
     X_list = [
-        SchemaAligner().fit_transform(X_fed, schema, column_map=column_map)
-        for X_fed, column_map in zip(X_list, column_maps)
+        SchemaAligner().fit_transform(X_fed, schema)
+        for X_fed, schema in zip(X_list, dataset_schemas)
     ]
 
     local_models: list[LocalRandomSurvivalForest] = []

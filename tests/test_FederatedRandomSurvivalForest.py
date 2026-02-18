@@ -4,7 +4,7 @@ from federated_rsf.models import (
     FederatedRandomSurvivalForest,
 )
 from federated_rsf.testing import create_dummy_data, federate_data
-from federated_rsf.preprocessing import SchemaAligner
+from federated_rsf.schema import SchemaAligner, DatasetSchema
 import pytest
 import numpy as np
 
@@ -25,7 +25,7 @@ def test_distribute():
         n_clients,
         random_state=random_state,
     )
-    X_list = [SchemaAligner().fit_transform(X_fed, X.columns) for X_fed in X_list]
+    X_list = [SchemaAligner().fit_transform(X_fed, DatasetSchema(X.columns)) for X_fed in X_list]
 
     local_models = []
 
@@ -64,7 +64,7 @@ def test_save_load(tmp_path):
         n_clients,
         random_state=random_state,
     )
-    X_list = [SchemaAligner().fit_transform(X_fed, X.columns) for X_fed in X_list]
+    X_list = [SchemaAligner().fit_transform(X_fed, DatasetSchema(X.columns)) for X_fed in X_list]
 
     local_models = []
 

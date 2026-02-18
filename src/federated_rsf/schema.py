@@ -6,6 +6,18 @@ import numpy as np
 from sklearn.preprocessing import OneHotEncoder
 from .persistence import SaveLoadMixin
 from typing import Self
+import dataclasses
+
+@dataclasses.dataclass
+class DatasetSchema(SaveLoadMixin):
+    columns: list[str]
+    column_map: Optional[dict[str, str]] = None
+
+    def __post_init__(self):
+        # If no column_map is passed, create identity map
+        if self.column_map is None:
+            identity_map = {col: col for col in self.columns}
+            self.column_map = identity_map
 
 
 class SchemaAligner(BaseEstimator, TransformerMixin, SaveLoadMixin):
@@ -19,9 +31,7 @@ class SchemaAligner(BaseEstimator, TransformerMixin, SaveLoadMixin):
     Any missing columns in the local data will be filled with NaN values.
     """
 
-    def fit(
-        self, full_schema: list[str], column_map: Optional[dict[str, str]] = None
-    ) -> Self:
+    def fit(self, dataset_schema: DatasetSchema) -> Self:
         """
         Fits the SchemaAligner to the provided full schema and column map.
 
@@ -35,11 +45,11 @@ class SchemaAligner(BaseEstimator, TransformerMixin, SaveLoadMixin):
             If None, it is assumed that the local column names are the same as the full schema column names.
         """
 
-        self.full_schema = full_schema
-        self.column_map = column_map
+        self.full_schema = dataset_schema.columns
+        self.column_map = dataset_schema.column_map
         return self
 
-    def transform(self, Data: pd.DataFrame) -> pd.DataFrame:
+    def transform(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Transforms the input DataFrame by aligning its schema to the full schema.
 
@@ -54,22 +64,14 @@ class SchemaAligner(BaseEstimator, TransformerMixin, SaveLoadMixin):
             The transformed DataFrame with aligned schema.
         """
 
-        if self.column_map is None:
-            local_columns = Data.columns.tolist()
-            column_map = {column: column for column in local_columns}
-        else:
-            column_map = self.column_map
-
-        Data_renamed = Data.rename(columns=column_map)
-        Data_reindexed = Data_renamed.reindex(columns=self.full_schema)
-        # Data_reindexed.attrs["aligned"] = True
-        return Data_reindexed
+        data_renamed = data.rename(columns=self.column_map)
+        data_reindexed = data_renamed.reindex(columns=self.full_schema)
+        return data_reindexed
 
     def fit_transform(
         self,
-        Data: pd.DataFrame,
-        full_schema: list[str],
-        column_map: Optional[dict[str, str]] = None,
+        data: pd.DataFrame,
+        dataset_schema: DatasetSchema,
     ):
         """
         Fits the SchemaAligner to the provided full schema and column map,
@@ -77,15 +79,14 @@ class SchemaAligner(BaseEstimator, TransformerMixin, SaveLoadMixin):
 
         Parameters
         ----------
-        Data : pd.DataFrame
+        data : pd.DataFrame
             The input DataFrame to be transformed.
 
-        full_schema : list of strings
-            A list of column names representing the full schema to align to.
-
-        column_map : dictionary of string -> string pairs, optional
-            A dictionary mapping local column names to the corresponding column names in the full schema.
-            If None, it is assumed that the local column names are the same as the full schema column names.
+        dataset_schema: DatasetSchema
+            A dataset schema containing:    
+            - a list of column names representing the full schema to align to.
+            - a dictionary of string -> string pairs, mapping the local column names to the corresponding column names in the full schema
+        
 
         Returns
         -------
@@ -93,8 +94,8 @@ class SchemaAligner(BaseEstimator, TransformerMixin, SaveLoadMixin):
             The transformed DataFrame with aligned schema.
         """
 
-        self.fit(full_schema, column_map)
-        return self.transform(Data)
+        self.fit(dataset_schema)
+        return self.transform(data)
 
 
 class SchemaCreator(BaseEstimator, TransformerMixin, SaveLoadMixin):
@@ -154,8 +155,7 @@ class SchemaCreator(BaseEstimator, TransformerMixin, SaveLoadMixin):
 
     def fit_transform(
         self,
-        local_features: list[list[str]],
-        local_column_maps: Optional[list[dict]] = None,
+        local_schemas: list[DatasetSchema],
     ):
         """
         Creates a unified schema from the provided local feature sets and optional column maps.
@@ -170,52 +170,44 @@ class SchemaCreator(BaseEstimator, TransformerMixin, SaveLoadMixin):
 
         Returns
         -------
-        tuple of (list of strings, list of dictionaries)
-            The unified schema and the updated local column maps.
+        list of DataSchemas
+            The transformed dataset schemas
         """
-        local_features = [set(features) for features in local_features]
-        if local_column_maps is None:
-            local_column_maps = [dict() for _ in range(len(local_features))]
 
-        local_column_maps_closure = [
-            {feature: feature for feature in features} for features in local_features
-        ]
-
-        local_column_maps_full: list[dict[str, str]] = []
-        for column_map, column_map_closure in zip(
-            local_column_maps, local_column_maps_closure
-        ):
-            local_column_maps_full.append(column_map_closure | column_map)
-
-        schema = set()
-        for local_map in local_column_maps_full:
-            schema.update(local_map.values())
-        schema = sorted(schema)
+        global_columns = set()
+        for schema in local_schemas:
+            global_columns.update(schema.column_map.values())
+        global_columns = sorted(global_columns)
 
         extra_columns = [
             f"{self.extra_column_prefix}{i}" for i in range(self.extra_columns)
         ]
-        schema.extend(extra_columns)
+        global_columns.extend(extra_columns)
 
         if self.anonymize:
-            new_schema = [f"feature_{i}" for i in range(len(schema))]
-            schema = (
-                np.random.RandomState(self.random_state).permutation(schema).tolist()
+            new_global_columns = [f"feature_{i}" for i in range(len(global_columns))]
+            global_columns = (
+                np.random.RandomState(self.random_state).permutation(global_columns).tolist()
             )
         else:
-            new_schema = schema
+            new_global_columns = global_columns
 
-        self.schema = new_schema
-        self.schema_column_map = dict(zip(schema, new_schema))
+        self.global_columns = new_global_columns
+        self.schema_column_map = dict(zip(global_columns, new_global_columns))
 
-        for local_map in local_column_maps_full:
-            for key, value in local_map.items():
+        updated_schemas: list[DatasetSchema] = []
 
-                local_map[key] = self.schema_column_map[value]
+        for schema in local_schemas:
+            updated_column_map = dict()
+            for key, value in schema.column_map.items():
 
-        return self.schema, local_column_maps_full
+                updated_column_map[key] = self.schema_column_map[value]
 
-    def add_client(self, features: list[str], column_map: Optional[dict] = None):
+            updated_schemas.append(DatasetSchema(self.global_columns, updated_column_map))
+
+        return updated_schemas
+
+    def add_client(self, dataset_schema: DatasetSchema):
         """
         Adds a new client with the provided features and optional column map to the existing schema.
 
@@ -232,14 +224,7 @@ class SchemaCreator(BaseEstimator, TransformerMixin, SaveLoadMixin):
         tuple of (list of strings, dictionary)
             The updated schema and the column map for the new client.
         """
-        if column_map is None:
-            column_map = dict()
-
-        column_map_closure = {feature: feature for feature in features}
-
-        local_column_map_full: dict[str, str] = column_map_closure | column_map
-
-        needed_columns = set(local_column_map_full.values()) - set(
+        needed_columns = set(dataset_schema.column_map.values()) - set(
             self.schema_column_map.keys()
         )
         if len(needed_columns) > self.extra_columns - self.extra_columns_used:
@@ -248,20 +233,23 @@ class SchemaCreator(BaseEstimator, TransformerMixin, SaveLoadMixin):
             )
 
         keys_to_remove = []
+        updated_column_map = dict()
 
-        for key, value in local_column_map_full.items():
+        for key, value in dataset_schema.column_map.items():
             if value in self.schema_column_map.keys():
+                updated_column_map[key] = value
                 continue
             extra_column_name = f"{self.extra_column_prefix}{self.extra_columns_used}"
             keys_to_remove.append(extra_column_name)
             self.schema_column_map[value] = self.schema_column_map[extra_column_name]
             self.extra_columns_used += 1
-            local_column_map_full[key] = extra_column_name
+            updated_column_map[key] = extra_column_name
 
-        for key, value in local_column_map_full.items():
-            local_column_map_full[key] = self.schema_column_map[value]
+        for key, value in updated_column_map.items():
+            updated_column_map[key] = self.schema_column_map[value]
 
         for key in keys_to_remove:
             del self.schema_column_map[key]
 
-        return self.schema, local_column_map_full
+
+        return DatasetSchema(self.global_columns, updated_column_map)

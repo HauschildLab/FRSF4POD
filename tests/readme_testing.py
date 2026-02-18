@@ -3,7 +3,7 @@ from federated_rsf.models import (
     FederatedRandomSurvivalForest,
     LocalRandomSurvivalForest,
 )
-from federated_rsf.preprocessing import SchemaAligner, SchemaCreator
+from federated_rsf.schema import SchemaAligner, SchemaCreator, DatasetSchema
 from federated_rsf.testing import create_dummy_data, federate_data
 
 
@@ -31,16 +31,16 @@ X_list, y_list = federate_data(
 # create global Schema
 
 schema_creator = SchemaCreator(anonymize=False)
-local_columns = [X_local.columns for X_local in X_list]
+local_columns = [DatasetSchema(X_local.columns) for X_local in X_list]
 
-schema, column_maps = schema_creator.fit_transform(local_columns)
+dataset_schemas = schema_creator.fit_transform(local_columns)
 
 # align local datasets
 X_list_aligned = []
 
-for X_local, column_map in zip(X_list, column_maps):
+for X_local, schema in zip(X_list, dataset_schemas):
     schema_aligner = SchemaAligner()
-    X_aligned = schema_aligner.fit_transform(X_local, schema, column_map=column_map)
+    X_aligned = schema_aligner.fit_transform(X_local, schema)
     X_list_aligned.append(X_aligned)
 
 

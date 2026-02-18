@@ -1,4 +1,4 @@
-from federated_rsf.preprocessing import SchemaAligner
+from federated_rsf.schema import SchemaAligner, DatasetSchema
 from federated_rsf.testing import create_dummy_data, federate_data
 import pytest
 
@@ -13,7 +13,7 @@ def test_columns_equal(random_state):
     X_list, _ = federate_data(X, y, 5, random_state=random_state)
 
     for X_fed in X_list:
-        X_aligned = SchemaAligner().fit_transform(X_fed, all_columns)
+        X_aligned = SchemaAligner().fit_transform(X_fed, DatasetSchema(all_columns))
 
         assert (X_aligned.columns == X.columns).all()
 
@@ -37,7 +37,7 @@ def test_columns_map(random_state):
         assert all([col not in X.columns for col in X_fed.columns])
 
         X_aligned = SchemaAligner().fit_transform(
-            X_fed, all_columns, column_map=renamer_reverse
+            X_fed, DatasetSchema(all_columns, column_map=renamer_reverse)
         )
 
         assert (X_aligned.columns == X.columns).all()
