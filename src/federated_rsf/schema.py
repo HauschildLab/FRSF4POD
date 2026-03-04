@@ -13,12 +13,20 @@ import dataclasses
 class DatasetSchema(SaveLoadMixin):
     columns: list[str]
     column_map: Optional[dict[str, str]] = None
+    generate_column_map_closure: bool = True
 
     def __post_init__(self):
-        # If no column_map is passed, create identity map
+        if not self.generate_column_map_closure:
+            return
+        # closure of column map to include identity mapping for columns missing from the passed map
         if self.column_map is None:
-            identity_map = {col: col for col in self.columns}
-            self.column_map = identity_map
+            self.column_map = dict()
+
+        identity_map = {col: col for col in self.columns}
+        for key, val in identity_map.items():
+            if val not in self.column_map.values():
+                self.column_map[key] = val
+        # self.column_map = identity_map | self.column_map
 
 
 class SchemaAligner(BaseEstimator, TransformerMixin, SaveLoadMixin):
@@ -232,7 +240,11 @@ class SchemaCreator(BaseEstimator, TransformerMixin, SaveLoadMixin):
                 updated_column_map[key] = self.schema_column_map[value]
 
             updated_schemas.append(
-                DatasetSchema(self.global_columns, updated_column_map)
+                DatasetSchema(
+                    self.global_columns,
+                    updated_column_map,
+                    generate_column_map_closure=False,
+                )
             )
 
         return updated_schemas

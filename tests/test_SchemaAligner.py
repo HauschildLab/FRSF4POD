@@ -63,9 +63,17 @@ def test_inverse_transform(random_state):
         schema_aligner = SchemaAligner()
 
         X_aligned = schema_aligner.fit_transform(
-            X_fed, DatasetSchema(all_columns, column_map=renamer_reverse)
+            X_fed,
+            DatasetSchema(
+                all_columns,
+                column_map=renamer_reverse,
+                generate_column_map_closure=False,
+            ),
         )
 
         X_undo_transform = schema_aligner.inverse_transform(X_aligned)
 
         assert (X_undo_transform.columns == X_fed.columns).all()
+
+
+# %%
