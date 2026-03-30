@@ -1,4 +1,4 @@
-# Federated Random Forest for Partially overlapping Data
+# Federated Random Survival Forest for Partially overlapping Data
 
 federated-rsf is a python implementation of the Federated Random Survival Forest algorithm for partially overlapping data.
 
@@ -43,11 +43,11 @@ pip install -U .
 
 To install in editable mode it with optional testing or development libraries uses
 ```bash
-pip install -U .[dev]
+pip install -U -e .[dev]
 ```
 or
 ```bash
-pip install -U .[test]
+pip install -U -e .[test]
 ```
 
 ## Quick Start
