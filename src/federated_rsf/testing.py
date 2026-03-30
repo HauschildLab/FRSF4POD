@@ -70,6 +70,7 @@ def federate_data(
     clients: Union[int, ArrayLike],
     drop_feature_percentage: float = 0.3,
     random_state: Optional[int] = None,
+    shuffle: bool = True,
 ):
     """
     Function to artificially federate data for testing purposes.
@@ -93,6 +94,9 @@ def federate_data(
 
     random_state : int, default=None
         The random state to use for reproducibility.
+
+    shuffle : bool, default=True
+        Whether to shuffle the data before splitting.
 
     Returns
     -------
@@ -118,10 +122,11 @@ def federate_data(
             f"Sum of client sizes ({sum(client_sizes)}) is greater than sample count in data ({len(X)}).\nReduce client sizes to match sample count in data."
         )
 
-    idx = list(X.index)
-    rng.shuffle(idx)
-    X = X.loc[idx].reset_index(drop=True)
-    y = y[idx]
+    if shuffle:
+        idx = list(X.index)
+        rng.shuffle(idx)
+        X = X.loc[idx].reset_index(drop=True)
+        y = y[idx]
 
     X_splits: list[pd.DataFrame] = []
     y_splits: list[np.ndarray] = []
