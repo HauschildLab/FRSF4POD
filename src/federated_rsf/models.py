@@ -264,8 +264,18 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
             The second field is a float with the time of event or time of censoring.
         """
         self.site_size: int = len(X)
+        # Columns that are all-NaN represent features absent from this site
+        # (they arrive that way when X has been aligned to a global schema).
+        # We record `local_features` *before* filling so the admission filter
+        # in FederatedRandomSurvivalForest.distribute_trees still sees the
+        # true local feature set.
         self.local_features = set(X.columns[~X.isna().all()].tolist())
         self.all_features = X.columns.tolist()
+        if X.isna().any().any():
+            # sksurv's RSF cannot fit with NaN; absent-feature columns have
+            # zero variance at this site, so filling with 0 is safe — trees
+            # will not split on them.
+            X = X.fillna(0.0)
         super().fit(X, y, sample_weight=sample_weight)
         for estimator in self.estimators_:
             estimator.sample_weight = self.site_size / self.n_estimators
@@ -488,6 +498,7 @@ class FederatedRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
         self.local_models: list[LocalRandomSurvivalForest] = []
         self.estimators_: list[SurvivalTree] = []
         self.tree_features: list[set] = []
+        self.tree_model_idx: list[int] = []
         for model in local_models:
             self.add_local_model(model)
 
@@ -505,16 +516,23 @@ class FederatedRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
             The local random survival forest to add to the federated model.
         """
         local_tree_features = []
+        model_features = list(local_model.all_features)
         for estimator in local_model.estimators_:
             tree_features = estimator.tree_.feature
             tree_features_names = set(
-                [self.all_features[i] for i in tree_features if i >= 0]
+                [
+                    model_features[i]
+                    for i in tree_features
+                    if i >= 0 and i < len(model_features)
+                ]
             )
             local_tree_features.append(tree_features_names)
 
+        model_idx = len(self.local_models)
         self.local_models.append(local_model)
         self.estimators_.extend(local_model.estimators_)
         self.tree_features.extend(local_tree_features)
+        self.tree_model_idx.extend([model_idx] * len(local_model.estimators_))
         self.n_estimators = len(self.estimators_)
         return self
 
@@ -524,18 +542,42 @@ class FederatedRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
     def predict(self, X):
         raise NotImplementedError("Federated model cannot predict directly.")
 
-    def distribute_trees(self) -> list[LocalRandomSurvivalForest]:
+    def distribute_trees(
+        self, min_feature_overlap: float = 1.0
+    ) -> list[LocalRandomSurvivalForest]:
         """
         Distributes the federated trees to the local models based on
         the features used by each tree and the features available locally.
-        Each local model will receive the trees that only use features available locally.
-        This method should be called after all local models have been added to the federated model.
+
+        Parameters
+        ----------
+        min_feature_overlap : float in (0, 1], default: 1.0
+            Minimum fraction of a tree's features that must be present in
+            the recipient's local feature set for the tree to be admitted.
+            1.0 = strict subset (original behaviour).  Lower values relax the
+            filter so more cross-client trees qualify, at the cost of asking
+            recipients to impute the missing features at predict time (the
+            recipient's aligned X must supply placeholder values for those
+            columns).  Use with globally-aligned feature layouts.
         """
-        for model in self.local_models:
+        if not 0.0 < min_feature_overlap <= 1.0:
+            raise ValueError("min_feature_overlap must lie in (0, 1].")
+
+        for model_idx, model in enumerate(self.local_models):
             valid_estimators = []
-            for estimator, feat_set in zip(self.estimators_, self.tree_features):
-                # find all estimators that only use features available locally
-                if feat_set.issubset(model.local_features):
+            for estimator, feat_set, origin in zip(
+                self.estimators_, self.tree_features, self.tree_model_idx
+            ):
+                if origin == model_idx:
+                    continue
+                if not feat_set:
+                    # Tree never splits on any feature (pure leaf): safe to admit.
+                    valid_estimators.append(estimator)
+                    continue
+                overlap = (
+                    len(feat_set & model.local_features) / len(feat_set)
+                )
+                if overlap >= min_feature_overlap:
                     valid_estimators.append(estimator)
 
             model.set_federated_estimators(valid_estimators)
