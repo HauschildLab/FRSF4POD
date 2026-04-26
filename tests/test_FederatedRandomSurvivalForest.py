@@ -138,14 +138,14 @@ def _build_fed_model_with_heterogeneous_features(random_state=0):
 
 def test_min_feature_overlap_monotonic():
     fed_model = _build_fed_model_with_heterogeneous_features()
-    counts = []
+    tree_counts = []
     for threshold in [1.0, 0.5, 0.0]:
         fed_model.distribute_trees(min_feature_overlap=threshold)
-        counts.append(
+        tree_counts.append(
             [len(m._federated_estimators) for m in fed_model.local_models]
         )
 
-    for strict, mid, relaxed in zip(*counts):
+    for strict, mid, relaxed in zip(*tree_counts):
         assert strict <= mid <= relaxed
 
 
@@ -153,30 +153,33 @@ def test_min_feature_overlap_zero_admits_all_foreign():
     fed_model = _build_fed_model_with_heterogeneous_features()
     fed_model.distribute_trees(min_feature_overlap=0.0)
 
-    for model_idx, model in enumerate(fed_model.local_models):
-        expected = sum(
-            1 for origin in fed_model.tree_model_index if origin != model_idx
+    for local_model_idx, local_model in enumerate(fed_model.local_models):
+        expected_foreign_tree_count = sum(
+            1
+            for origin_model_idx in fed_model.tree_model_index
+            if origin_model_idx != local_model_idx
         )
-        assert len(model._federated_estimators) == expected
+        assert len(local_model._federated_estimators) == expected_foreign_tree_count
 
 
 def test_min_feature_overlap_one_requires_strict_subset():
     fed_model = _build_fed_model_with_heterogeneous_features()
     fed_model.distribute_trees(min_feature_overlap=1.0)
 
-    for model_idx, model in enumerate(fed_model.local_models):
-        for estimator, feat_set, origin in zip(
+    for local_model_idx, local_model in enumerate(fed_model.local_models):
+        for estimator, tree_feat_set, origin_model_idx in zip(
             fed_model.estimators_,
             fed_model.tree_features,
             fed_model.tree_model_index,
         ):
-            if origin == model_idx:
+            if origin_model_idx == local_model_idx:
                 continue
             admitted = any(
-                est is estimator for est in model._federated_estimators
+                fed_estimator is estimator
+                for fed_estimator in local_model._federated_estimators
             )
-            if admitted and feat_set:
-                assert feat_set.issubset(model.local_features)
+            if admitted:
+                assert tree_feat_set.issubset(local_model.local_features)
 
 
 def test_min_feature_overlap_out_of_range():

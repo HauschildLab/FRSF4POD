@@ -579,7 +579,8 @@ class FederatedRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
                 if origin == model_idx:
                     continue
                 if not feat_set:
-                    # Tree never splits on any feature (pure leaf): safe to admit.
+                    # Pure-leaf tree: reads no features at predict time, so
+                    # feature overlap is trivially 100% by construction.
                     valid_estimators.append(estimator)
                     continue
                 overlap = (

@@ -165,7 +165,15 @@ print(f'Clients: {N_CLIENTS} | Drop: {DROP_FEATURE_PCT*100:.0f}% | '
 
 
 X_raw, y_raw = load_breast_cancer()
-X_full = OneHotEncoder().fit_transform(X_raw)
+
+# One-hot encoding is applied per-client *after* federate_data splits and drops
+# columns (see Section 3). Encoding before splitting can leave a site with a
+# strict subset of indicator columns for the same source categorical (e.g.
+# grade=I and grade=II but not grade=III), which is silently imputed to zero
+# downstream and biases cross-site predictions. pd.Categorical.categories is
+# preserved through row slicing, so per-shard OHE yields identical columns
+# for any kept categorical.
+X_full = OneHotEncoder().fit_transform(X_raw)  # diagnostic snapshot only
 
 event_field = y_raw.dtype.names[0]   # 'e.tdm'
 time_field  = y_raw.dtype.names[1]   # 't.tdm'
@@ -203,12 +211,13 @@ print(f'  RMST    = {RMST_HORIZON:.0f}  ({RMST_HORIZON/365:.1f} yr)')
 # In[37]:
 
 
-X_clients_raw, y_clients = federate_data(
-    X_full, y_raw,
+X_clients_pre_ohe, y_clients = federate_data(
+    X_raw, y_raw,
     clients=N_CLIENTS,
     drop_feature_percentage=DROP_FEATURE_PCT,
     random_state=RANDOM_STATE,
 )
+X_clients_raw = [OneHotEncoder().fit_transform(X_c) for X_c in X_clients_pre_ohe]
 client_feat_sets = [sorted(X_c.columns.tolist()) for X_c in X_clients_raw]
 
 # Schema alignment — required by FederatedRSF.distribute_trees()
