@@ -155,7 +155,10 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
         Available after fitting the model.
 
     local_features : set
-        The set of features that are available in the local dataset.
+        Features present in the local dataset — columns that are not entirely
+        NaN after schema alignment. Used by
+        :meth:`FederatedRandomSurvivalForest.distribute_trees` to filter
+        which foreign trees are compatible with this site.
         Available after fitting the model.
 
     all_features : list
@@ -163,7 +166,16 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
         Available after fitting the model.
 
     estimators_ : list of SurvivalTree instances
-        The collection of fitted sub-estimators.
+        The collection of sub-estimators currently in use for prediction.
+        Depending on :attr:`tree_origin`, this holds either the locally-fit
+        trees or the combined pool of local and foreign trees.
+
+    _federated_estimators : list of SurvivalTree instances
+        Trees received from *other* sites via
+        :meth:`FederatedRandomSurvivalForest.distribute_trees`. Does NOT
+        include this site's local trees; they are merged in only when
+        :meth:`use_federated_estimators` activates the federated pool, so
+        that the name reflects what each site contributed from the outside.
 
     unique_times_ : ndarray, shape = (n_unique_times,)
         Unique time points.
@@ -372,8 +384,15 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
 
     def use_federated_estimators(self, random_state: Optional[int] = None) -> Self:
         """
-        Switches the local model to use trees trained on federated sites.
-        This method can be used to update the local model with federated trees,
+        Switches the local model to predict with the federated pool — the
+        concatenation of the locally-fit trees and the foreign trees stored
+        in :attr:`_federated_estimators`. Use
+        :meth:`use_local_estimators` to switch back to local-only trees.
+
+        With ``update_method="all"`` every tree in the pool is used.
+        With ``update_method="constant"`` ``n_estimators`` trees are sampled
+        from the pool, so local and foreign trees compete for slots under
+        the chosen weighting scheme.
 
         Parameters
         ----------
@@ -391,20 +410,22 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
         self._local_estimators = self.estimators_
         self.tree_origin = "federated"
 
+        pool = list(self._local_estimators) + list(self._federated_estimators)
+
         if self.update_method == "all":
-            self.estimators_ = self._federated_estimators
+            self.estimators_ = pool
 
         elif self.update_method == "constant":
             if self.update_weighting == "equal":
-                weights: list[float] = [1.0] * len(self._federated_estimators)
+                weights: list[float] = [1.0] * len(pool)
             elif self.update_weighting == "site_size":
-                weights: list[float] = [
-                    estimator.sample_weight for estimator in self._federated_estimators
-                ]
-            self.estimators_ = np.random.default_rng(random_state).choice(
-                self._federated_estimators,
-                size=self.n_estimators,
-                p=np.array(weights) / sum(weights),
+                weights: list[float] = [e.sample_weight for e in pool]
+            self.estimators_ = list(
+                np.random.default_rng(random_state).choice(
+                    pool,
+                    size=self.n_estimators,
+                    p=np.array(weights) / sum(weights),
+                )
             )
 
         federated_unique_times = set()
@@ -488,6 +509,7 @@ class FederatedRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
         self.local_models: list[LocalRandomSurvivalForest] = []
         self.estimators_: list[SurvivalTree] = []
         self.tree_features: list[set] = []
+        self.tree_model_index: list[int] = []
         for model in local_models:
             self.add_local_model(model)
 
@@ -505,16 +527,19 @@ class FederatedRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
             The local random survival forest to add to the federated model.
         """
         local_tree_features = []
+        model_features = list(local_model.all_features)
         for estimator in local_model.estimators_:
             tree_features = estimator.tree_.feature
             tree_features_names = set(
-                [self.all_features[i] for i in tree_features if i >= 0]
+                [model_features[i] for i in tree_features if i >= 0]
             )
             local_tree_features.append(tree_features_names)
 
+        model_idx = len(self.local_models)
         self.local_models.append(local_model)
         self.estimators_.extend(local_model.estimators_)
         self.tree_features.extend(local_tree_features)
+        self.tree_model_index.extend([model_idx] * len(local_model.estimators_))
         self.n_estimators = len(self.estimators_)
         return self
 
@@ -524,18 +549,44 @@ class FederatedRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
     def predict(self, X):
         raise NotImplementedError("Federated model cannot predict directly.")
 
-    def distribute_trees(self) -> list[LocalRandomSurvivalForest]:
+    def distribute_trees(
+        self, min_feature_overlap: float = 1.0
+    ) -> list[LocalRandomSurvivalForest]:
         """
         Distributes the federated trees to the local models based on
         the features used by each tree and the features available locally.
-        Each local model will receive the trees that only use features available locally.
-        This method should be called after all local models have been added to the federated model.
+
+        Parameters
+        ----------
+        min_feature_overlap : float in [0, 1], default: 1.0
+            Minimum fraction of a tree's features that must be present in
+            the recipient's local feature set for the tree to be admitted.
+            1.0 = strict subset (original behaviour).  Lower values relax the
+            filter so more cross-client trees qualify, at the cost of asking
+            recipients to impute the missing features at predict time (the
+            recipient's aligned X must supply placeholder values for those
+            columns).  0.0 admits every foreign tree unconditionally.
+            Use with globally-aligned feature layouts.
         """
-        for model in self.local_models:
+        if not 0.0 <= min_feature_overlap <= 1.0:
+            raise ValueError("min_feature_overlap must lie in [0, 1].")
+
+        for model_idx, model in enumerate(self.local_models):
             valid_estimators = []
-            for estimator, feat_set in zip(self.estimators_, self.tree_features):
-                # find all estimators that only use features available locally
-                if feat_set.issubset(model.local_features):
+            for estimator, feat_set, origin in zip(
+                self.estimators_, self.tree_features, self.tree_model_index
+            ):
+                if origin == model_idx:
+                    continue
+                if not feat_set:
+                    # Pure-leaf tree: reads no features at predict time, so
+                    # feature overlap is trivially 100% by construction.
+                    valid_estimators.append(estimator)
+                    continue
+                overlap = (
+                    len(feat_set & model.local_features) / len(feat_set)
+                )
+                if overlap >= min_feature_overlap:
                     valid_estimators.append(estimator)
 
             model.set_federated_estimators(valid_estimators)

@@ -108,6 +108,59 @@ def test_local_fed_switch(random_state):
     ), "local and federated predictions should differ"
 
 
+def test_use_federated_estimators_merges_local_and_foreign():
+    random_state = 0
+    n_samples, n_features = 64, 4
+
+    X, y = create_dummy_data(n_samples, n_features, random_state=random_state)
+
+    model = LocalRandomSurvivalForest(
+        n_estimators=20, update_method="all", random_state=random_state
+    )
+    model.fit(X, y)
+    local_trees = list(model.estimators_)
+
+    foreign_a = LocalRandomSurvivalForest(n_estimators=15, random_state=1).fit(X, y)
+    foreign_b = LocalRandomSurvivalForest(n_estimators=10, random_state=2).fit(X, y)
+    foreign_trees = list(foreign_a.estimators_) + list(foreign_b.estimators_)
+
+    model.set_federated_estimators(foreign_trees)
+    model.use_federated_estimators()
+
+    assert len(model.estimators_) == len(local_trees) + len(foreign_trees)
+    active = set(map(id, model.estimators_))
+    assert all(id(t) in active for t in local_trees), "local trees missing from pool"
+    assert all(id(t) in active for t in foreign_trees), "foreign trees missing from pool"
+
+    model.use_local_estimators()
+    assert len(model.estimators_) == len(local_trees)
+    assert set(map(id, model.estimators_)) == set(map(id, local_trees))
+
+
+def test_use_federated_estimators_constant_samples_from_combined_pool():
+    random_state = 0
+    n_samples, n_features = 64, 4
+
+    X, y = create_dummy_data(n_samples, n_features, random_state=random_state)
+
+    model = LocalRandomSurvivalForest(
+        n_estimators=20, update_method="constant", random_state=random_state
+    )
+    model.fit(X, y)
+    local_ids = set(map(id, model.estimators_))
+
+    foreign = LocalRandomSurvivalForest(n_estimators=20, random_state=1).fit(X, y)
+    foreign_ids = set(map(id, foreign.estimators_))
+
+    model.set_federated_estimators(list(foreign.estimators_))
+    model.use_federated_estimators(random_state=42)
+
+    assert len(model.estimators_) == 20
+    sampled_ids = set(map(id, model.estimators_))
+    assert sampled_ids & local_ids, "no local trees were sampled"
+    assert sampled_ids & foreign_ids, "no foreign trees were sampled"
+
+
 @pytest.mark.parametrize("random_state", [0, 1, 2, 3, 4, 5, 6, None])
 def test_hazard_survival_function(random_state):
     n_samples, n_features = 128, 4
