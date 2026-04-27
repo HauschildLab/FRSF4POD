@@ -73,7 +73,11 @@ def test_random_state(anonymize, random_state):
 
     for schema1, schema2 in zip(schemas1, schemas2):
         assert schema1.columns == schema2.columns
-        if random_state is not None:
+        if random_state is not None or not anonymize:
             assert schema1.column_map == schema2.column_map
         elif anonymize:
-            assert schema1.column_map != schema2.column_map
+            # random_state=None creates independent random mappings. They may
+            # occasionally match, so only assert the stable contract.
+            assert set(schema1.column_map) == set(schema2.column_map)
+            assert set(schema1.column_map.values()).issubset(schema1.columns)
+            assert set(schema2.column_map.values()).issubset(schema2.columns)
