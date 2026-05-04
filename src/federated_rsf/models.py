@@ -304,6 +304,8 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
             "predict_cumulative_hazard_function", "predict_survival_function"
         ] = None,
     ):
+        X = self._validate_X_predict(X)
+
         if self.tree_origin == "local":
             unique_times = self.unique_times_
         else:
@@ -328,9 +330,9 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
         for i in range(len(X)):
             Ys = []
             for pred in preds:
-                X = pred[i].x
+                step_x = pred[i].x
                 Y = pred[i].y
-                indexes = np.searchsorted(X, unique_times, side="right")
+                indexes = np.searchsorted(step_x, unique_times, side="right")
                 Y_extended = np.array([left_y] + list(Y) + [right_y])
 
                 Y_fed = Y_extended[indexes]
