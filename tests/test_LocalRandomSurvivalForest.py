@@ -161,6 +161,25 @@ def test_use_federated_estimators_constant_samples_from_combined_pool():
     assert sampled_ids & foreign_ids, "no foreign trees were sampled"
 
 
+def test_use_federated_estimators_constant_samples_without_replacement_when_possible():
+    random_state = 0
+    n_samples, n_features = 64, 4
+
+    X, y = create_dummy_data(n_samples, n_features, random_state=random_state)
+
+    model = LocalRandomSurvivalForest(
+        n_estimators=20, update_method="constant", random_state=random_state
+    )
+    model.fit(X, y)
+
+    foreign = LocalRandomSurvivalForest(n_estimators=40, random_state=1).fit(X, y)
+    model.set_federated_estimators(list(foreign.estimators_))
+    model.use_federated_estimators(random_state=42)
+
+    sampled_ids = list(map(id, model.estimators_))
+    assert len(sampled_ids) == len(set(sampled_ids))
+
+
 @pytest.mark.parametrize("random_state", [0, 1, 2, 3, 4, 5, 6, None])
 def test_hazard_survival_function(random_state):
     n_samples, n_features = 128, 4

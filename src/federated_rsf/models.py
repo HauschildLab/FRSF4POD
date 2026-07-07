@@ -422,10 +422,12 @@ class LocalRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
                 weights: list[float] = [1.0] * len(pool)
             elif self.update_weighting == "site_size":
                 weights: list[float] = [e.sample_weight for e in pool]
+            replace = len(pool) < self.n_estimators
             self.estimators_ = list(
                 np.random.default_rng(random_state).choice(
                     pool,
                     size=self.n_estimators,
+                    replace=replace,
                     p=np.array(weights) / sum(weights),
                 )
             )
@@ -564,11 +566,10 @@ class FederatedRandomSurvivalForest(RandomSurvivalForest, SaveLoadMixin):
             Minimum fraction of a tree's features that must be present in
             the recipient's local feature set for the tree to be admitted.
             1.0 = strict subset (original behaviour).  Lower values relax the
-            filter so more cross-client trees qualify, at the cost of asking
-            recipients to impute the missing features at predict time (the
-            recipient's aligned X must supply placeholder values for those
-            columns).  0.0 admits every foreign tree unconditionally.
-            Use with globally-aligned feature layouts.
+            filter so more cross-client trees qualify, at the cost of letting
+            trees encounter NaN for features absent at the recipient site.
+            0.0 admits every foreign tree unconditionally. Use with
+            globally-aligned feature layouts and estimators that support NaN.
         """
         if not 0.0 <= min_feature_overlap <= 1.0:
             raise ValueError("min_feature_overlap must lie in [0, 1].")
