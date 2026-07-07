@@ -219,3 +219,26 @@ temp/
 
 #.DS_Store
 .DS_Store
+r.md
+examples/c-index-cross-site-split-figure.png
+examples/cindex_bar.pdf
+examples/cindex_boxplots.pdf
+examples/cindex_per_client.pdf
+examples/cindex_pooled.pdf
+examples/convergence.pdf
+examples/federated_benchmark_BRCA_bak.py
+examples/federated_benchmark_BRCA_random_splits.py
+examples/federated_benchmark_BRCA_results.csv
+examples/federated_benchmark_BRCA.py
+examples/fedrf_examples_ILPD.ipynb
+examples/fedrf_examples_legacy.ipynb
+examples/ILPD_preprocessed.csv
+examples/km_curves.pdf
+examples/random_site_split_cindex.pdf
+examples/random_site_split_results.csv
+examples/random_site_split_rmst.pdf
+examples/risk_at_time.pdf
+examples/rmst.pdf
+figures/c-index-pooled-cross-site-split-figure.png
+examples/federated_benchmark_BRCA.py
+examples/federated_benchmark_BRCA.py
